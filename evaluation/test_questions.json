@@ -1,0 +1,12 @@
+[
+    {
+      "question": "What is the main topic of the uploaded document?",
+      "expected_keywords": ["replace", "with", "keywords", "from", "your", "doc"],
+      "ground_truth": "Replace this with the actual expected answer for your document."
+    },
+    {
+      "question": "Hi, how are you?",
+      "expected_keywords": [],
+      "ground_truth": "This should NOT trigger retrieval — it's a greeting."
+    }
+  ]
