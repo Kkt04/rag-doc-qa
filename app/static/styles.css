@@ -503,11 +503,42 @@ body {
   flex-shrink: 0;
 }
 
+.source .src-count {
+  color: var(--muted);
+  font-weight: 500;
+  flex-shrink: 0;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
 .source .src-body {
   margin-top: 8px;
   font-size: 12.5px;
   color: var(--text);
   line-height: 1.6;
+}
+
+.source .src-chunk + .src-chunk {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.source .src-chunk-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.source .src-chunk-meta .src-name {
+  flex: 0 1 auto;
+}
+
+.source .src-chunk-content {
   white-space: pre-wrap;
 }
 

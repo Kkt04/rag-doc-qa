@@ -87,7 +87,7 @@ async function checkHealth() {
     const data = await res.json();
     els.status.classList.add("ok");
     els.status.classList.remove("err");
-    els.statusText.textContent = "Connected · " + data.model;
+    els.statusText.textContent = "Connected";
   } catch {
     els.status.classList.add("err");
     els.status.classList.remove("ok");
@@ -176,31 +176,33 @@ function addBotMessage() {
   return { msg, bubble };
 }
 
-function addSource(source) {
+function addSourceGroup(sourceName, chunks) {
   const details = document.createElement("details");
   details.className = "source";
 
   const summary = document.createElement("summary");
   const name = document.createElement("span");
   name.className = "src-name";
-  name.textContent = source.source;
-  name.title = source.source;
-  const chunkId = document.createElement("span");
-  chunkId.className = "src-name";
-  chunkId.textContent = "chunk #" + source.chunk_id;
+  name.textContent = sourceName;
+  name.title = sourceName;
   summary.appendChild(name);
-  summary.appendChild(chunkId);
-  if (source.score != null) {
-    const score = document.createElement("span");
-    score.className = "src-score";
-    score.textContent = (source.score * 100).toFixed(1) + "%";
-    summary.appendChild(score);
-  }
+  const count = document.createElement("span");
+  count.className = "src-count";
+  count.textContent = chunks.length === 1 ? "1 chunk" : chunks.length + " chunks";
+  summary.appendChild(count);
   details.appendChild(summary);
 
   const body = document.createElement("div");
   body.className = "src-body";
-  body.textContent = source.content;
+  chunks.forEach((source) => {
+    const block = document.createElement("div");
+    block.className = "src-chunk";
+    const content = document.createElement("div");
+    content.className = "src-chunk-content";
+    content.textContent = source.content;
+    block.appendChild(content);
+    body.appendChild(block);
+  });
   details.appendChild(body);
 
   return details;
@@ -228,7 +230,13 @@ function renderAnswer(data) {
   if (data.sources && data.sources.length) {
     const sources = document.createElement("div");
     sources.className = "sources";
-    data.sources.forEach((s) => sources.appendChild(addSource(s)));
+    const groups = data.sources.reduce((acc, s) => {
+      (acc[s.source] = acc[s.source] || []).push(s);
+      return acc;
+    }, {});
+    Object.keys(groups).forEach((name) =>
+      sources.appendChild(addSourceGroup(name, groups[name]))
+    );
     bubble.appendChild(sources);
   }
 
