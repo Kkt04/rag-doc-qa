@@ -7,7 +7,7 @@ A FastAPI-based Retrieval-Augmented Generation (RAG) system that answers questio
 - **Document ingestion** — upload PDF / TXT / MD files via the web UI or the API; content is chunked with overlap and embedded locally.
 - **Semantic retrieval** — embeddings generated on-device with `sentence-transformers/all-MiniLM-L6-v2` and indexed in a persisted FAISS store.
 - **Smart agent** — a Groq LLM (default `llama-3.3-70b-versatile`) decides via a tool call whether a question actually needs document context, so greetings and general questions skip retrieval entirely (saving cost/latency).
-- **Grounded answers** — when retrieval is used, the answer is generated only from the retrieved context and includes the source file, chunk ID, and relevance score.
+- **Grounded answers** — when retrieval is used, the answer is generated only from the retrieved context. Sources are shown grouped by file (each document listed once), with the supporting text expandable.
 - **Clean web UI** — drag-and-drop upload plus a chat interface, served directly by FastAPI (no frontend build step).
 - **Evaluation harness** — measures answer relevance, retrieval precision, and retrieval efficiency.
 
@@ -55,7 +55,8 @@ Question
 ├── scripts/
 │   └── ingest_cli.py    # CLI to ingest data/ without the API
 ├── requirements.txt
-└── .env.example
+├── .env.example       # template — placeholders only, never real keys
+└── .gitignore         # ignores .env, .env.example, venv, data, vectorstore
 ```
 
 ## Getting started
@@ -89,6 +90,12 @@ GROQ_API_KEY=your_key_here
 
 > Note: the embedding model runs locally, so no embedding API key or cost is required.
 
+### Security — protect your API key
+
+- `.env` and `.env.example` are listed in `.gitignore`, so they are never committed or pushed.
+- **Never put a real API key in `.env.example`** — it exists only to document the variables. Leave it as a placeholder (`GROQ_API_KEY=your_groq_api_key_here`).
+- If a key is ever exposed (e.g. GitHub flags it), revoke it immediately at <https://console.groq.com/keys> and update your local `.env`.
+
 ### 4. Run the server
 
 ```bash
@@ -106,7 +113,7 @@ Open <http://127.0.0.1:8000/> to use the web UI.
 
 1. Drag and drop (or click to browse) PDF/TXT/MD files in the left panel and click **Ingest Documents**.
 2. Ask questions in the chat panel.
-3. Answers that used your documents show the source file, chunk ID, and relevance score — expand each source to read the supporting text.
+3. Answers that used your documents list each source file once — click a source to expand and read the supporting text.
 
 ### API
 
