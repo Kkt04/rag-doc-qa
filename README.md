@@ -1,4 +1,5 @@
 # RAG Document Q&A Assistant
+---
 
 A FastAPI-based Retrieval-Augmented Generation (RAG) system that answers questions about your own documents. Upload PDFs, TXT, or Markdown files, and the assistant retrieves the most relevant chunks and produces grounded answers with source citations.
 
