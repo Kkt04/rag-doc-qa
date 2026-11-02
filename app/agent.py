@@ -11,8 +11,7 @@ via a tool call, whether the question actually needs document context.
 This is what gives the "~X% reduction in unnecessary retrieval/API calls" —
 we only pay the retrieval cost when the model asks for it.
 """
-from typing import Optional
-from langchain_community.vectorstores import FAISS
+from typing import Any, Optional
 
 from app.llm import get_llm
 from app.retrieval import retrieve
@@ -56,7 +55,7 @@ Rules:
 
 
 def answer_question(
-    store: Optional[FAISS], question: str, k: int = None
+    store: Optional[Any], question: str, k: int = None
 ) -> AskResponse:
     llm = get_llm()
 

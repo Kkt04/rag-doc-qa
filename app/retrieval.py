@@ -2,15 +2,14 @@
 Context-aware retrieval: fetch top-k chunks and format them into a prompt-ready
 context block, plus structured source metadata for citations.
 """
-from typing import List, Tuple
-from langchain_community.vectorstores import FAISS
+from typing import Any, List, Tuple
 
 from app.config import settings
 from app.vectorstore import similarity_search
 from app.schemas import SourceChunk
 
 
-def retrieve(store: FAISS, query: str, k: int = None) -> Tuple[str, List[SourceChunk]]:
+def retrieve(store: Any, query: str, k: int = None) -> Tuple[str, List[SourceChunk]]:
     k = k or settings.RETRIEVAL_K
     results = similarity_search(store, query, k=k)
 

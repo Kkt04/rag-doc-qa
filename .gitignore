@@ -7,3 +7,4 @@ venv/
 vectorstore/faiss_index/
 data/*
 !data/.gitkeep
+.vercel
