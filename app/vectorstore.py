@@ -28,15 +28,35 @@ class InMemoryBM25Store:
     def add_documents(self, docs: List[Document]) -> None:
         self.docs.extend(docs)
 
+    def clear(self) -> None:
+        self.docs = []
+
     def similarity_search_with_relevance_scores(
         self, query: str, k: int = 4
     ) -> List[Tuple[Document, float]]:
         if not self.docs:
             return []
 
+        q_lower = (query or "").lower().strip()
+        summary_keywords = [
+            "summar", "takeaway", "insight", "overview", "main point",
+            "key point", "about", "all", "whole", "entire", "brief",
+            "topics", "describe", "explain"
+        ]
+        is_summary = any(kw in q_lower for kw in summary_keywords) or not q_lower
+
+        # For summarization or broad queries, expand coverage
+        effective_k = max(k, 12) if is_summary else k
+
+        # If document collection is small, return all chunks for comprehensive context
+        if is_summary and len(self.docs) <= effective_k:
+            return [(d, 1.0) for d in self.docs]
+
         q_tokens = self._tokenize(query)
         if not q_tokens:
-            return [(d, 0.5) for d in self.docs[:k]]
+            step = max(1, len(self.docs) // effective_k)
+            distributed = [self.docs[i] for i in range(0, len(self.docs), step)][:effective_k]
+            return [(d, 0.9) for d in distributed]
 
         N = len(self.docs)
         doc_tokens = [self._tokenize(d.page_content) for d in self.docs]
@@ -65,13 +85,25 @@ class InMemoryBM25Store:
 
             scored_docs.append((self.docs[idx], score))
 
+        # Check if query had any lexical matches
+        positive_scores = [s for _, s in scored_docs if s > 0]
+
+        if not positive_scores:
+            # Semantic / zero-match query: sample evenly across the document
+            step = max(1, len(self.docs) // effective_k)
+            distributed = [self.docs[i] for i in range(0, len(self.docs), step)][:effective_k]
+            return [(d, 0.75) for d in distributed]
+
         scored_docs.sort(key=lambda x: x[1], reverse=True)
-        max_score = scored_docs[0][1] if scored_docs and scored_docs[0][1] > 0 else 1.0
+        max_score = scored_docs[0][1] if scored_docs[0][1] > 0 else 1.0
+
+        limit = effective_k if is_summary else k
         normalized = [
             (doc, round(min(1.0, score / max_score), 4))
-            for doc, score in scored_docs[:k]
+            for doc, score in scored_docs[:limit]
+            if is_summary or score > 0
         ]
-        return normalized
+        return normalized if normalized else [(d, 0.5) for d, _ in scored_docs[:k]]
 
     def save_local(self, path: str) -> None:
         os.makedirs(path, exist_ok=True)

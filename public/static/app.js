@@ -9,6 +9,7 @@ const els = {
   statusText: $("#status-text"),
   themeToggle: $("#theme-toggle"),
   clearChatBtn: $("#clear-chat-btn"),
+  clearKbBtn: $("#clear-kb-btn"),
   dropzone: $("#dropzone"),
   fileInput: $("#file-input"),
   fileList: $("#file-list"),
@@ -28,6 +29,9 @@ const els = {
 };
 
 let selectedFiles = [];
+let indexedFiles = [];
+let sessionDocuments = [];
+let isIngesting = false;
 let toastTimer = null;
 let totalIndexedFiles = 0;
 let totalIndexedChunks = 0;
@@ -66,6 +70,7 @@ function toast(message, type = "info") {
 // Utility Functions
 // ==========================================
 function formatSize(bytes) {
+  if (!bytes) return "0 B";
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
@@ -92,28 +97,30 @@ function renderMarkdown(text) {
   }
   // Fallback simple parser
   let html = escapeHtml(text);
-  // Bold
   html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-  // Inline code
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-  // Paragraphs
   html = html.replace(/\n\n+/g, "</p><p>");
   return "<p>" + html + "</p>";
 }
 
 // ==========================================
-// Document Queue & Rendering
+// Session & File List Rendering
 // ==========================================
 function renderFiles() {
   els.fileList.innerHTML = "";
-  selectedFiles.forEach((file, idx) => {
+  const allDisplay = [
+    ...indexedFiles.map((f) => ({ ...f, status: "indexed" })),
+    ...selectedFiles.map((f) => ({ name: f.name, size: f.size, status: "staged" })),
+  ];
+
+  allDisplay.forEach((file, idx) => {
     const li = document.createElement("li");
     li.className = "file-item";
 
     const ext = getFileExt(file.name);
     const badge = document.createElement("span");
     badge.className = `file-ext-badge ${ext}`;
-    badge.textContent = ext;
+    badge.textContent = file.status === "indexed" ? "✓ " + ext : ext;
 
     const name = document.createElement("span");
     name.className = "file-name";
@@ -122,7 +129,7 @@ function renderFiles() {
 
     const size = document.createElement("span");
     size.className = "file-size";
-    size.textContent = formatSize(file.size);
+    size.textContent = file.status === "indexed" ? "Indexed" : formatSize(file.size);
 
     const removeBtn = document.createElement("button");
     removeBtn.className = "file-remove-btn";
@@ -135,7 +142,18 @@ function renderFiles() {
       </svg>
     `;
     removeBtn.addEventListener("click", () => {
-      selectedFiles.splice(idx, 1);
+      if (file.status === "staged") {
+        const sIdx = selectedFiles.findIndex((f) => f.name === file.name);
+        if (sIdx > -1) selectedFiles.splice(sIdx, 1);
+      } else {
+        const iIdx = indexedFiles.findIndex((f) => f.name === file.name);
+        if (iIdx > -1) indexedFiles.splice(iIdx, 1);
+        sessionDocuments = sessionDocuments.filter(
+          (d) => d.metadata && d.metadata.source !== file.name
+        );
+        saveSession();
+        updateStats();
+      }
       renderFiles();
     });
 
@@ -143,23 +161,67 @@ function renderFiles() {
     els.fileList.appendChild(li);
   });
 
-  const count = selectedFiles.length;
-  els.fileCountBadge.textContent = `${count} staged`;
-  els.ingestBtn.disabled = count === 0;
-  els.emptyHint.hidden = count > 0;
+  const stagedCount = selectedFiles.length;
+  const indexedCount = indexedFiles.length;
+  if (stagedCount > 0) {
+    els.fileCountBadge.textContent = `${stagedCount} staged`;
+    els.ingestBtn.disabled = false;
+  } else if (indexedCount > 0) {
+    els.fileCountBadge.textContent = `${indexedCount} active`;
+    els.ingestBtn.disabled = true;
+  } else {
+    els.fileCountBadge.textContent = "0 files";
+    els.ingestBtn.disabled = true;
+  }
+  els.emptyHint.hidden = allDisplay.length > 0;
+}
+
+function updateStats() {
+  totalIndexedFiles = indexedFiles.length;
+  totalIndexedChunks = sessionDocuments.length;
+  els.statFiles.textContent = totalIndexedFiles;
+  els.statChunks.textContent = totalIndexedChunks;
+}
+
+function saveSession() {
+  try {
+    sessionStorage.setItem("rag_session_docs", JSON.stringify(sessionDocuments));
+    sessionStorage.setItem("rag_session_files", JSON.stringify(indexedFiles));
+  } catch (e) {
+    console.warn("Storage quota exceeded", e);
+  }
+}
+
+function restoreSession() {
+  try {
+    const rawDocs = sessionStorage.getItem("rag_session_docs");
+    const rawFiles = sessionStorage.getItem("rag_session_files");
+    if (rawDocs && rawFiles) {
+      sessionDocuments = JSON.parse(rawDocs);
+      indexedFiles = JSON.parse(rawFiles);
+      updateStats();
+      renderFiles();
+      if (indexedFiles.length > 0) {
+        els.ingestMeta.innerHTML = `Loaded <strong>${indexedFiles.length}</strong> active document(s) (${sessionDocuments.length} chunks) in session.`;
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to restore session", e);
+  }
 }
 
 function setIngestLoading(loading) {
+  isIngesting = loading;
   els.ingestBtn.disabled = loading || selectedFiles.length === 0;
   els.ingestBtn.classList.toggle("loading", loading);
   els.ingestBtn.querySelector(".spinner")?.remove();
-  
+
   if (loading) {
     const s = document.createElement("span");
     s.className = "spinner";
     s.setAttribute("aria-hidden", "true");
     els.ingestBtn.prepend(s);
-    els.ingestLabel.textContent = "Processing & Indexing…";
+    els.ingestLabel.textContent = "Indexing Documents…";
   } else {
     els.ingestLabel.textContent = "Ingest & Vectorize";
   }
@@ -169,40 +231,65 @@ function setIngestLoading(loading) {
 // Ingestion Action
 // ==========================================
 async function ingest() {
-  if (selectedFiles.length === 0) return;
+  if (selectedFiles.length === 0) return true;
   setIngestLoading(true);
   els.ingestMeta.innerHTML = "";
 
+  const filesToUpload = [...selectedFiles];
   const form = new FormData();
-  selectedFiles.forEach((file) => form.append("files", file));
+  filesToUpload.forEach((file) => form.append("files", file));
 
   try {
-    const res = await fetch("/ingest", { method: "POST", body: form });
+    const res = await fetch("/ingest?replace=true", { method: "POST", body: form });
     const data = await res.json().catch(() => null);
-    
+
     if (!res.ok) {
       throw new Error(data && data.detail ? data.detail : "Document ingestion failed.");
     }
 
     const fileCount = data.files_ingested.length;
     const chunkCount = data.total_chunks;
-    totalIndexedFiles += fileCount;
-    totalIndexedChunks += chunkCount;
 
-    els.statFiles.textContent = totalIndexedFiles;
-    els.statChunks.textContent = totalIndexedChunks;
+    indexedFiles = filesToUpload.map((f) => ({ name: f.name, size: f.size }));
+    sessionDocuments = data.documents || [];
+    selectedFiles = [];
+
+    saveSession();
+    updateStats();
+    renderFiles();
 
     const plural = chunkCount === 1 ? "chunk" : "chunks";
-    els.ingestMeta.innerHTML = `Successfully indexed <strong>${fileCount}</strong> file(s) into <strong>${chunkCount}</strong> ${plural}.`;
-    toast(`Indexed ${fileCount} document(s) (${chunkCount} ${plural})`, "success");
-
-    selectedFiles = [];
-    renderFiles();
+    els.ingestMeta.innerHTML = `Indexed <strong>${fileCount}</strong> file(s) into <strong>${chunkCount}</strong> ${plural}.`;
+    toast(`Indexed ${fileCount} document(s) successfully (${chunkCount} ${plural})`, "success");
+    return true;
   } catch (err) {
     toast(err.message, "error");
+    return false;
   } finally {
     setIngestLoading(false);
   }
+}
+
+// ==========================================
+// Reset / Clear Knowledge Base
+// ==========================================
+async function clearKnowledgeBase() {
+  selectedFiles = [];
+  indexedFiles = [];
+  sessionDocuments = [];
+  sessionStorage.removeItem("rag_session_docs");
+  sessionStorage.removeItem("rag_session_files");
+
+  try {
+    await fetch("/reset", { method: "POST" });
+  } catch (e) {
+    console.warn("Reset call error", e);
+  }
+
+  updateStats();
+  renderFiles();
+  els.ingestMeta.innerHTML = "";
+  toast("Knowledge base cleared. Upload new documents to begin.", "info");
 }
 
 // ==========================================
@@ -211,7 +298,7 @@ async function ingest() {
 function scrollToBottom() {
   els.messages.scrollTo({
     top: els.messages.scrollHeight,
-    behavior: "smooth"
+    behavior: "smooth",
   });
 }
 
@@ -247,7 +334,7 @@ function addTyping() {
   const box = document.createElement("div");
   box.className = "typing-box";
   box.innerHTML = `
-    <span>Analyzing query &amp; retrieving context</span>
+    <span>Analyzing query &amp; retrieving document context</span>
     <div class="typing-dots">
       <span></span><span></span><span></span>
     </div>
@@ -311,7 +398,7 @@ function renderAnswer(data) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;">
         <polyline points="20 6 9 17 4 12"></polyline>
       </svg>
-      Grounded in Documents (${count} citations)
+      Grounded in Documents (${count} citation${count === 1 ? "" : "s"})
     `;
   } else {
     badge.className = "badge direct";
@@ -393,6 +480,13 @@ async function askQuestion(query) {
   const question = query || els.composer.value.trim();
   if (!question) return;
 
+  // If user dropped files and immediately typed a question, auto-ingest first!
+  if (selectedFiles.length > 0) {
+    toast("Indexing newly added documents first…", "info");
+    const ok = await ingest();
+    if (!ok) return;
+  }
+
   els.welcome.hidden = true;
   addUserMessage(question);
   els.composer.value = "";
@@ -402,10 +496,15 @@ async function askQuestion(query) {
   const typing = addTyping();
 
   try {
+    const payload = { question };
+    if (sessionDocuments && sessionDocuments.length > 0) {
+      payload.documents = sessionDocuments;
+    }
+
     const res = await fetch("/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => null);
     typing.remove();
@@ -439,10 +538,17 @@ els.dropzone.addEventListener("keydown", (e) => {
   }
 });
 
+function handleNewFiles(files) {
+  if (!files || !files.length) return;
+  selectedFiles = [...selectedFiles, ...files];
+  renderFiles();
+  // Auto-ingest immediately on selection for seamless UX
+  ingest();
+}
+
 els.fileInput.addEventListener("change", () => {
   if (els.fileInput.files.length) {
-    selectedFiles = [...selectedFiles, ...els.fileInput.files];
-    renderFiles();
+    handleNewFiles([...els.fileInput.files]);
     els.fileInput.value = "";
   }
 });
@@ -464,12 +570,15 @@ els.fileInput.addEventListener("change", () => {
 els.dropzone.addEventListener("drop", (e) => {
   const files = [...e.dataTransfer.files];
   if (files.length) {
-    selectedFiles = [...selectedFiles, ...files];
-    renderFiles();
+    handleNewFiles(files);
   }
 });
 
-els.ingestBtn.addEventListener("click", ingest);
+els.ingestBtn.addEventListener("click", () => ingest());
+if (els.clearKbBtn) {
+  els.clearKbBtn.addEventListener("click", clearKnowledgeBase);
+}
+
 els.askBtn.addEventListener("click", () => askQuestion());
 
 els.composer.addEventListener("keydown", (e) => {
@@ -533,5 +642,6 @@ async function checkHealth() {
 
 // Initial Boot
 initTheme();
+restoreSession();
 checkHealth();
 setInterval(checkHealth, 30000);

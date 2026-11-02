@@ -1,10 +1,11 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 
 class AskRequest(BaseModel):
     question: str
     k: Optional[int] = None  # override retrieval-k per request
+    documents: Optional[List[Dict[str, Any]]] = None  # client-session documents for serverless consistency
 
 
 class SourceChunk(BaseModel):
@@ -16,7 +17,7 @@ class SourceChunk(BaseModel):
 
 class AskResponse(BaseModel):
     answer: str
-    used_retrieval: bool          # did the agent decide to call the retrieval tool?
+    used_retrieval: bool  # did the agent decide to call the retrieval tool?
     sources: List[SourceChunk] = []
     reasoning: Optional[str] = None  # short note on why it retrieved or not
 
@@ -24,3 +25,4 @@ class AskResponse(BaseModel):
 class IngestResponse(BaseModel):
     files_ingested: List[str]
     total_chunks: int
+    documents: Optional[List[Dict[str, Any]]] = None

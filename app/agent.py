@@ -6,7 +6,7 @@ every single time), we let the LLM itself decide, via a tool call, whether the
 question actually needs document context.
 
 - Greetings, chit-chat, general knowledge, math -> answered directly, no retrieval.
-- Anything about the ingested documents -> LLM calls `retrieve_documents` tool.
+- Specific questions or summarization of ingested documents -> LLM calls `retrieve_documents` tool.
 """
 from typing import Any, Optional
 
@@ -20,18 +20,18 @@ RETRIEVE_TOOL = {
     "function": {
         "name": "retrieve_documents",
         "description": (
-            "Search the user's uploaded documents for relevant context. "
-            "Call this ONLY when the question requires specific facts, figures, "
-            "or content that would live inside the uploaded documents. "
-            "Do NOT call this for greetings, general knowledge, math, or "
-            "questions unrelated to the documents."
+            "Search and retrieve context from the user's uploaded documents. "
+            "Call this whenever the question asks about facts, policies, data, "
+            "summaries, key takeaways, insights, or topics in the uploaded files. "
+            "Do NOT call this for pure greetings (e.g. 'Hello'), basic math, or "
+            "general conversational chit-chat."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "The search query to run against the document store.",
+                    "description": "The search query or topic to look up in the documents.",
                 }
             },
             "required": ["query"],
@@ -39,16 +39,16 @@ RETRIEVE_TOOL = {
     },
 }
 
-SYSTEM_PROMPT = """You are a document Q&A assistant.
-You have a tool called `retrieve_documents` that searches the user's uploaded files.
+SYSTEM_PROMPT = """You are an expert document Q&A and analysis assistant.
+You have access to a tool called `retrieve_documents` that searches the user's uploaded files.
 
 Rules:
-1. If the question needs information from the uploaded documents, call `retrieve_documents`.
-2. If the question is a greeting, small talk, general knowledge, or something you can
-   confidently answer without the documents, answer directly WITHOUT calling the tool.
-3. After you receive retrieved context, answer ONLY using that context. If the context
-   doesn't contain the answer, say so honestly — do not make things up.
-4. Keep answers concise and cite the source file names you used.
+1. If the user asks about the uploaded documents, policies, facts, or asks to summarize, extract key takeaways, or analyze the documents, ALWAYS call `retrieve_documents`.
+2. If the user asks a broad question like "Summarize the uploaded documents" or "What are the main takeaways?", call `retrieve_documents` with query "summary key takeaways".
+3. If the question is a purely conversational greeting, small talk, general math, or general knowledge completely unrelated to documents, answer directly WITHOUT calling the tool.
+4. After you receive retrieved context, answer accurately and thoroughly based strictly on that context.
+5. If the user asks for a summary or key takeaways, provide a well-structured, formatted response with clear headers and bullet points.
+6. Always cite the source file names for the information you provide.
 """
 
 
@@ -95,12 +95,12 @@ def answer_question(
                 return AskResponse(
                     answer=(
                         "The assistant identified that your question requires document context, "
-                        "but no documents have been uploaded yet. Please upload files in the "
-                        "Knowledge Base panel on the left and click 'Ingest & Vectorize'."
+                        "but no documents are currently loaded in your session. Please upload your files in the "
+                        "Knowledge Base panel on the left to index them."
                     ),
                     used_retrieval=False,
                     sources=[],
-                    reasoning="Retrieval requested by agent but vector index is empty.",
+                    reasoning="Retrieval requested by agent but document index is empty.",
                 )
 
             # Step 2: execute the tool call the model asked for
@@ -124,7 +124,7 @@ def answer_question(
             # Step 3: synthesize grounded answer
             tool_content = (
                 f"Retrieved document context:\n{context}\n\n"
-                "Please provide a clear and concise answer to the user's question based strictly on the context above. Cite the source files."
+                "Please provide a clear, accurate, and comprehensive response to the user's question based strictly on the context above. Cite the source files."
             )
 
             messages.append(ai_msg)
@@ -169,3 +169,4 @@ def answer_question(
 
     if last_error:
         raise last_error
+    raise RuntimeError("Failed to obtain answer from candidate models.")

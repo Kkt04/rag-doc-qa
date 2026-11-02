@@ -77,7 +77,16 @@
             </svg>
             <h2>Knowledge Base</h2>
           </div>
-          <span class="badge-count" id="file-count-badge">0 queued</span>
+          <div class="header-actions">
+            <button class="clear-kb-btn" id="clear-kb-btn" title="Reset Knowledge Base" aria-label="Reset Knowledge Base">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span>Clear</span>
+            </button>
+            <span class="badge-count" id="file-count-badge">0 queued</span>
+          </div>
         </div>
 
         <!-- Drag & Drop Zone -->
@@ -140,20 +149,20 @@
           <summary>Pipeline Architecture Details</summary>
           <div class="specs-content">
             <div class="spec-row">
-              <span>Embedding</span>
-              <code>all-MiniLM-L6-v2</code>
+              <span>Retrieval Engine</span>
+              <code>BM25 Okapi (Serverless)</code>
             </div>
             <div class="spec-row">
-              <span>Vector Store</span>
-              <code>FAISS (Cosine L2)</code>
+              <span>Vector / Index Store</span>
+              <code>In-Memory JSON Cache</code>
             </div>
             <div class="spec-row">
               <span>Chunk Size / Overlap</span>
-              <code>800 / 120 tokens</code>
+              <code>800 / 120 chars</code>
             </div>
             <div class="spec-row">
               <span>Retrieval Strategy</span>
-              <code>Adaptive Tool Calling</code>
+              <code>Adaptive Agent Routing</code>
             </div>
           </div>
         </details>
