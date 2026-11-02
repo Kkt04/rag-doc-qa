@@ -86,18 +86,21 @@ def answer_question(
                     answer=ai_msg.content,
                     used_retrieval=False,
                     sources=[],
-                    reasoning=f"Model ({model_name}) judged this didn't require document context.",
+                    reasoning=f"Model ({model_name}) answered directly without needing document retrieval.",
                 )
 
-            if store is None:
+            # Check if store has documents
+            has_docs = store is not None and hasattr(store, "docs") and len(store.docs) > 0
+            if not has_docs:
                 return AskResponse(
                     answer=(
-                        "The model wanted to search your documents, but no documents "
-                        "have been ingested yet. Please upload/ingest files first."
+                        "The assistant identified that your question requires document context, "
+                        "but no documents have been uploaded yet. Please upload files in the "
+                        "Knowledge Base panel on the left and click 'Ingest & Vectorize'."
                     ),
                     used_retrieval=False,
                     sources=[],
-                    reasoning="Retrieval requested but vector store is empty.",
+                    reasoning="Retrieval requested by agent but vector index is empty.",
                 )
 
             # Step 2: execute the tool call the model asked for
@@ -105,20 +108,49 @@ def answer_question(
             query = call["args"].get("query", question)
             context, sources = retrieve(store, query, k=k)
 
+            # If no relevant chunks were found in the documents
+            if not sources or not context.strip():
+                return AskResponse(
+                    answer=(
+                        f"I searched your uploaded documents for relevant context regarding '{query}', "
+                        "but could not find matching sections. Please ensure the relevant file "
+                        "is uploaded or try rephrasing your question."
+                    ),
+                    used_retrieval=True,
+                    sources=[],
+                    reasoning="No sufficiently matching chunks found in the document index.",
+                )
+
+            # Step 3: synthesize grounded answer
+            tool_content = (
+                f"Retrieved document context:\n{context}\n\n"
+                "Please provide a clear and concise answer to the user's question based strictly on the context above. Cite the source files."
+            )
+
             messages.append(ai_msg)
             messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": call["id"],
-                    "content": context if context else "No relevant context found.",
+                    "content": tool_content,
                 }
             )
 
-            # Step 3: model produces the final grounded answer
-            final_msg = llm.invoke(messages)
+            try:
+                final_msg = llm.invoke(messages, tools=[RETRIEVE_TOOL])
+            except Exception:
+                final_msg = llm.invoke(messages)
+
+            answer_content = final_msg.content
+            if not answer_content and getattr(final_msg, "tool_calls", None):
+                # Fallback if model returned an extra tool call instead of text
+                answer_content = (
+                    "Based on the retrieved context:\n"
+                    + "\n\n".join([f"> {s.content}" for s in sources[:2]])
+                )
 
             return AskResponse(
-                answer=final_msg.content,
+                answer=answer_content,
                 used_retrieval=True,
                 sources=sources,
                 reasoning=f"Grounded response using {len(sources)} document chunk(s) via {model_name}.",
