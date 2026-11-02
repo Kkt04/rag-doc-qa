@@ -7,7 +7,7 @@ FastAPI app exposing:
 import os
 import shutil
 from typing import List
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -64,7 +64,13 @@ def _get_store():
 
 
 @app.get("/")
-def root():
+def root(request: Request):
+    if request.query_params.get("debug"):
+        return {
+            "scope_path": request.scope.get("path"),
+            "url_path": request.url.path,
+            "headers": dict(request.headers),
+        }
     index_file = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
