@@ -32,7 +32,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # in-memory handle to the loaded store (also persisted to disk)
 _store_cache = {"store": None}
@@ -46,12 +49,20 @@ def _get_store():
 
 @app.get("/")
 def root():
-    return FileResponse("app/static/index.html")
+    index_file = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    return {"status": "ok", "message": "RAG Document Q&A API is operational"}
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health():
-    return {"status": "ok", "model": settings.GROQ_MODEL}
+    return {
+        "status": "ok",
+        "model": settings.GROQ_MODEL,
+        "is_vercel": settings.DATA_DIR.startswith("/tmp"),
+    }
 
 
 @app.post("/ingest", response_model=IngestResponse)
