@@ -108,8 +108,25 @@ async def ingest(files: List[UploadFile] = File(...)):
 
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest):
+    if not settings.GROQ_API_KEY:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "GROQ_API_KEY is not set. Add GROQ_API_KEY to your Vercel Project Settings "
+                "-> Environment Variables (or in local .env). Get a free key at https://console.groq.com/keys"
+            ),
+        )
     store = _get_store()
-    return answer_question(store, req.question, k=req.k)
+    try:
+        return answer_question(store, req.question, k=req.k)
+    except Exception as e:
+        error_msg = str(e)
+        if "api_key" in error_msg.lower() or "authentication" in error_msg.lower():
+            raise HTTPException(
+                status_code=400,
+                detail="Groq authentication failed. Please verify your GROQ_API_KEY.",
+            )
+        raise HTTPException(status_code=500, detail=f"Inference error: {error_msg}")
 
 
 if __name__ == "__main__":
