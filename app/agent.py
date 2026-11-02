@@ -56,10 +56,10 @@ def answer_question(
     store: Optional[Any], question: str, k: int = None
 ) -> AskResponse:
     candidate_models = [
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "qwen/qwen3.8-27b",
         settings.GROQ_MODEL,
-        "llama-3.1-8b-instant",
-        "llama-3.1-70b-versatile",
-        "llama3-8b-8192",
     ]
     models_to_try = []
     for m in candidate_models:
