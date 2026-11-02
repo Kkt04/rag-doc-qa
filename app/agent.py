@@ -125,7 +125,12 @@ def answer_question(
             )
         except Exception as e:
             err_str = str(e).lower()
-            if "model_not_found" in err_str or "does not exist" in err_str:
+            if (
+                "model_not_found" in err_str
+                or "does not exist" in err_str
+                or "decommissioned" in err_str
+                or "deprecated" in err_str
+            ):
                 last_error = e
                 continue
             raise e
