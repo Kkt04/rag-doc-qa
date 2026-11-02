@@ -1,17 +1,16 @@
 """
-Groq LLM wrapper. Groq's free tier serves open models (Llama 3.3, etc.)
-at very high inference speed.
+Groq LLM client wrapper with multi-model fallback support.
 """
-from functools import lru_cache
+from typing import Optional
 from langchain_groq import ChatGroq
 
 from app.config import settings
 
 
-@lru_cache(maxsize=1)
-def get_llm(temperature: float = 0.1) -> ChatGroq:
+def get_llm(model_name: Optional[str] = None, temperature: float = 0.1) -> ChatGroq:
+    model = model_name or settings.GROQ_MODEL
     return ChatGroq(
         api_key=settings.GROQ_API_KEY,
-        model=settings.GROQ_MODEL,
+        model=model,
         temperature=temperature,
     )

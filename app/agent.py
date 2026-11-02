@@ -1,18 +1,16 @@
 """
 Tool/function-calling agent.
 
-Instead of ALWAYS retrieving from the vector store (which costs an embedding
-call + a similarity search every single time), we let the LLM itself decide,
-via a tool call, whether the question actually needs document context.
+Instead of ALWAYS retrieving from the vector store (which costs latency and tokens
+every single time), we let the LLM itself decide, via a tool call, whether the
+question actually needs document context.
 
 - Greetings, chit-chat, general knowledge, math -> answered directly, no retrieval.
 - Anything about the ingested documents -> LLM calls `retrieve_documents` tool.
-
-This is what gives the "~X% reduction in unnecessary retrieval/API calls" —
-we only pay the retrieval cost when the model asks for it.
 """
 from typing import Any, Optional
 
+from app.config import settings
 from app.llm import get_llm
 from app.retrieval import retrieve
 from app.schemas import AskResponse
@@ -57,58 +55,80 @@ Rules:
 def answer_question(
     store: Optional[Any], question: str, k: int = None
 ) -> AskResponse:
-    llm = get_llm()
-
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": question},
+    candidate_models = [
+        settings.GROQ_MODEL,
+        "llama-3.1-8b-instant",
+        "llama-3.1-70b-versatile",
+        "llama3-8b-8192",
     ]
+    models_to_try = []
+    for m in candidate_models:
+        if m and m not in models_to_try:
+            models_to_try.append(m)
 
-    # Step 1: let the model decide — direct answer vs tool call
-    ai_msg = llm.invoke(messages, tools=[RETRIEVE_TOOL])
+    last_error = None
+    for model_name in models_to_try:
+        try:
+            llm = get_llm(model_name=model_name)
 
-    tool_calls = getattr(ai_msg, "tool_calls", None) or []
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": question},
+            ]
 
-    if not tool_calls:
-        # Model chose to answer directly -> zero retrieval cost
-        return AskResponse(
-            answer=ai_msg.content,
-            used_retrieval=False,
-            sources=[],
-            reasoning="Model judged this didn't require document context.",
-        )
+            # Step 1: let the model decide — direct answer vs tool call
+            ai_msg = llm.invoke(messages, tools=[RETRIEVE_TOOL])
+            tool_calls = getattr(ai_msg, "tool_calls", None) or []
 
-    if store is None:
-        return AskResponse(
-            answer=(
-                "The model wanted to search your documents, but no documents "
-                "have been ingested yet. Please upload/ingest files first."
-            ),
-            used_retrieval=False,
-            sources=[],
-            reasoning="Retrieval requested but vector store is empty.",
-        )
+            if not tool_calls:
+                # Model chose to answer directly -> zero retrieval cost
+                return AskResponse(
+                    answer=ai_msg.content,
+                    used_retrieval=False,
+                    sources=[],
+                    reasoning=f"Model ({model_name}) judged this didn't require document context.",
+                )
 
-    # Step 2: execute the tool call the model asked for
-    call = tool_calls[0]
-    query = call["args"].get("query", question)
-    context, sources = retrieve(store, query, k=k)
+            if store is None:
+                return AskResponse(
+                    answer=(
+                        "The model wanted to search your documents, but no documents "
+                        "have been ingested yet. Please upload/ingest files first."
+                    ),
+                    used_retrieval=False,
+                    sources=[],
+                    reasoning="Retrieval requested but vector store is empty.",
+                )
 
-    messages.append(ai_msg)
-    messages.append(
-        {
-            "role": "tool",
-            "tool_call_id": call["id"],
-            "content": context if context else "No relevant context found.",
-        }
-    )
+            # Step 2: execute the tool call the model asked for
+            call = tool_calls[0]
+            query = call["args"].get("query", question)
+            context, sources = retrieve(store, query, k=k)
 
-    # Step 3: model produces the final grounded answer
-    final_msg = llm.invoke(messages)
+            messages.append(ai_msg)
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": context if context else "No relevant context found.",
+                }
+            )
 
-    return AskResponse(
-        answer=final_msg.content,
-        used_retrieval=True,
-        sources=sources,
-        reasoning="Model requested retrieval based on the question.",
-    )
+            # Step 3: model produces the final grounded answer
+            final_msg = llm.invoke(messages)
+
+            return AskResponse(
+                answer=final_msg.content,
+                used_retrieval=True,
+                sources=sources,
+                reasoning=f"Grounded response using {len(sources)} document chunk(s) via {model_name}.",
+            )
+        except Exception as e:
+            err_str = str(e).lower()
+            if "model_not_found" in err_str or "does not exist" in err_str:
+                last_error = e
+                continue
+            raise e
+
+    if last_error:
+        raise last_error
