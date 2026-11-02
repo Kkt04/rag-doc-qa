@@ -1,15 +1,18 @@
 # RAG Document Q&A Assistant
 
-A production-ready Retrieval-Augmented Generation (RAG) system with a modern, sleek web interface and serverless Vercel deployment support. Upload PDFs, TXT, or Markdown documents to build a semantic vector index, and ask questions through a smart tool-calling assistant powered by Groq and LangChain.
+A production-ready Retrieval-Augmented Generation (RAG) system with a modern, sleek web interface and serverless Vercel deployment. Upload PDFs, TXT, or Markdown documents to build a semantic vector index, and ask questions through a smart tool-calling assistant powered by Groq and LangChain.
+
+🔗 **Live Production URL:** [https://rag-doc-qa-woad.vercel.app](https://rag-doc-qa-woad.vercel.app)  
+📖 **API Documentation (Swagger):** [https://rag-doc-qa-woad.vercel.app/docs](https://rag-doc-qa-woad.vercel.app/docs)
 
 ---
 
 ## Key Highlights
 
-- **Smart Agent Routing** — Uses Groq (`llama-3.3-70b-versatile`) with tool-calling to determine whether a query truly needs document retrieval. Greetings, general knowledge, and conversational queries bypass vector search entirely, saving token latency and computational overhead.
-- **Modern Sleek Web UI** — Built with clean glassmorphism, responsive dual-theme support (Dark & Light modes), drag-and-drop document upload, staged queue management with file-type badges, and rich Markdown answer rendering with syntax-styled code blocks.
+- **Smart Agent Routing** — Uses Groq high-speed LPU inference (`openai/gpt-oss-120b` / `openai/gpt-oss-20b` / `qwen/qwen3.8-27b`) with tool-calling to determine whether a query truly needs document retrieval. Greetings, general knowledge, and conversational queries bypass vector search entirely, saving token latency and computational overhead.
+- **Modern Sleek Web UI** — Built with clean glassmorphism, responsive dual-theme support (Dark & Light modes with instant persistence), drag-and-drop document upload, staged queue management with file-type badges, and rich Markdown answer rendering with syntax-styled code blocks.
 - **Grounded Answers & Expandable Citations** — When retrieval is triggered, answers are synthesized strictly from document excerpts. Source citations are grouped by file with expandable chunk previews and relevance stats.
-- **Vercel Serverless Ready** — Pre-configured with `vercel.json` and `api/index.py` entrypoint. Automatically adapts storage and cache directories to `/tmp` in serverless environments.
+- **Optimized for Vercel Serverless** — Uses a lightweight BM25 Okapi retrieval engine (<40 MB total bundle), fitting comfortably within Vercel's 500 MB limit and achieving sub-millisecond similarity queries with zero PyTorch/CUDA bloat. Storage and cache directories automatically adapt to `/tmp` in serverless environments.
 - **Evaluation Harness** — Includes an automated scoring pipeline measuring answer relevance, retrieval precision, and routing efficiency.
 
 ---
@@ -29,13 +32,13 @@ A production-ready Retrieval-Augmented Generation (RAG) system with a modern, sl
              │ /ingest                     │ /ask
 ┌────────────▼──────────────┐ ┌────────────▼─────────────┐
 │ Document Ingestion Pipeline│ │   Smart Decision Agent   │
-│ - Chunking (800 / 120 ovl)│ │ - Groq Llama 3.3 70B     │
-│ - all-MiniLM-L6-v2 Embed   │ │ - Tool Calling Evaluator │
-│ - FAISS Vector Indexing    │ └──────┬────────────┬─────┘
+│ - Chunking (800 / 120 ovl)│ │ - Groq LPU Inference     │
+│ - Text tokenization       │ │ - Tool Calling Evaluator │
+│ - In-Memory BM25 Indexing │ └──────┬────────────┬─────┘
 └────────────┬──────────────┘        │ No         │ Yes (Needs Docs)
              │ Persist                │            ▼
 ┌────────────▼──────────────┐        │    ┌──────────────┐
-│     FAISS Vector Store     │◄───────┼────┤Top-k Semantic│
+│     Vector / Doc Store     │◄───────┼────┤Top-k Semantic│
 │ (Disk / /tmp on Serverless)│        │    │  Retrieval   │
 └───────────────────────────┘        │    └──────┬───────┘
                                      │           │ Context
@@ -51,11 +54,11 @@ A production-ready Retrieval-Augmented Generation (RAG) system with a modern, sl
 ## Tech Stack
 
 - **Backend Framework:** FastAPI, Uvicorn, Pydantic v2
-- **Orchestration & RAG:** LangChain, LangChain-Groq, LangChain-Community, LangChain-HuggingFace
-- **LLM Inference:** Groq Cloud (`llama-3.3-70b-versatile`)
-- **Embeddings & Vector Search:** HuggingFace `sentence-transformers/all-MiniLM-L6-v2`, FAISS (CPU)
+- **Orchestration & RAG:** LangChain, LangChain-Groq, LangChain-Community
+- **LLM Inference:** Groq Cloud LPU (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b`)
+- **Retrieval Engine:** High-performance BM25 Okapi with document length normalization and sublinear term frequency
 - **Document Extractors:** PyPDF, TextLoader
-- **Deployment Platform:** Vercel (Fluid Compute / Serverless Python)
+- **Deployment Platform:** Vercel (Fluid Compute / Serverless Python runtime)
 
 ---
 
@@ -69,8 +72,8 @@ A production-ready Retrieval-Augmented Generation (RAG) system with a modern, sl
 │   ├── main.py          # FastAPI application & route definitions
 │   ├── config.py        # Central configuration (supports Vercel /tmp)
 │   ├── ingestion.py     # Document loaders & recursive text chunking
-│   ├── embeddings.py    # Local HuggingFace embedding model
-│   ├── vectorstore.py   # FAISS index persistence & similarity search
+│   ├── embeddings.py    # Embeddings configuration loader
+│   ├── vectorstore.py   # BM25 vector index persistence & retrieval
 │   ├── retrieval.py     # Top-k retrieval & citation grouping
 │   ├── agent.py         # Tool-calling agent (retrieval vs. direct answer)
 │   ├── llm.py           # Groq LLM client wrapper
@@ -79,52 +82,39 @@ A production-ready Retrieval-Augmented Generation (RAG) system with a modern, sl
 │       ├── index.html   # HTML5 UI with prompt cards & theme toggler
 │       ├── styles.css   # Dark/light theme styles & glassmorphism
 │       └── app.js       # Client interaction logic & Markdown rendering
+├── public/              # Static CDN assets served by Vercel edge
 ├── data/                # Local uploaded documents directory
-├── vectorstore/         # Local FAISS index files
+├── vectorstore/         # Local persisted index files
 ├── evaluation/          # RAG evaluation script & test datasets
 ├── scripts/
 │   └── ingest_cli.py    # Standalone CLI ingestion script
 ├── vercel.json          # Vercel routing & serverless configuration
-├── requirements.txt     # Python dependencies
+├── requirements.txt     # Python dependencies (<40 MB lightweight bundle)
 └── README.md
 ```
 
 ---
 
-## Deploying to Vercel
+## Live Deployment
 
-This repository is pre-configured for zero-friction Vercel deployment via `vercel.json` and `api/index.py`.
+The application is deployed on Vercel at:  
+👉 **[https://rag-doc-qa-woad.vercel.app](https://rag-doc-qa-woad.vercel.app)**
 
-### Method 1: Continuous Deployment via GitHub (Recommended)
+### Deploying Your Own Copy
 
-1. Push your repository to GitHub:
+1. **Push to GitHub**:
    ```bash
    git add .
-   git commit -m "Configure Vercel deployment and modern UI"
+   git commit -m "Deploy RAG Document Q&A"
    git push origin main
    ```
-2. Navigate to [Vercel Dashboard](https://vercel.com/new).
-3. Import your **`rag-doc-qa`** repository.
-4. In the **Environment Variables** panel, add:
-   - `GROQ_API_KEY`: Your free Groq API key (from [Groq Console](https://console.groq.com/keys)).
-5. Click **Deploy**. Vercel will build and launch your application globally!
-
-### Method 2: Deploying via Vercel CLI
-
-1. Install or run Vercel CLI:
-   ```bash
-   npx vercel
-   ```
-2. Link the project and set environment variable:
-   ```bash
-   npx vercel env add GROQ_API_KEY
-   ```
-3. Deploy to production:
-   ```bash
-   npx vercel --prod
-   ```
-
-> **Serverless File System Note:** On Vercel, the filesystem outside `/tmp` is read-only. The application automatically detects Vercel environments and routes `DATA_DIR`, `VECTORSTORE_DIR`, `HF_HOME`, and `TORCH_HOME` to `/tmp` to ensure seamless execution.
+2. **Import into Vercel**:
+   - Go to [vercel.com/new](https://vercel.com/new) and select your repository.
+3. **Configure Environment Variables**:
+   - `GROQ_API_KEY`: Your free API key from [Groq Console](https://console.groq.com/keys).
+   - *(Optional)* `GROQ_MODEL`: Model name (defaults to `openai/gpt-oss-120b`).
+4. **Deploy**:
+   - Vercel automatically detects the FastAPI configuration via `vercel.json` and deploys your application globally.
 
 ---
 
@@ -156,8 +146,8 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory:
 
 ```bash
-GROQ_API_KEY=gsk_your_groq_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_API_KEY=your_groq_api_key_here
+GROQ_MODEL=openai/gpt-oss-120b
 CHUNK_SIZE=800
 CHUNK_OVERLAP=120
 RETRIEVAL_K=4
@@ -187,7 +177,7 @@ python -m uvicorn app.main:app --reload --reload-dir app
 ### Example cURL Ingestion
 
 ```bash
-curl -X POST http://127.0.0.1:8000/ingest \
+curl -X POST https://rag-doc-qa-woad.vercel.app/ingest \
   -F "files=@handbook.pdf" \
   -F "files=@notes.txt"
 ```
@@ -195,7 +185,7 @@ curl -X POST http://127.0.0.1:8000/ingest \
 ### Example cURL Query
 
 ```bash
-curl -X POST http://127.0.0.1:8000/ask \
+curl -X POST https://rag-doc-qa-woad.vercel.app/ask \
   -H "Content-Type: application/json" \
   -d '{"question": "What are the key policy changes described in the handbook?"}'
 ```
