@@ -34,17 +34,12 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def fix_vercel_rewritten_path(request, call_next):
-    matched_path = request.headers.get("x-matched-path")
-    path = request.scope.get("path", "")
-    if matched_path and path.startswith("/api/index"):
-        request.scope["path"] = matched_path
-    elif path.startswith("/api/index.py"):
-        sub = path[len("/api/index.py") :]
-        request.scope["path"] = sub if sub else "/"
-    elif path.startswith("/api/index"):
-        sub = path[len("/api/index") :]
-        request.scope["path"] = sub if sub else "/"
+async def fix_vercel_rewritten_path(request: Request, call_next):
+    rewritten_path = request.query_params.get("__path")
+    if rewritten_path:
+        if not rewritten_path.startswith("/"):
+            rewritten_path = "/" + rewritten_path
+        request.scope["path"] = rewritten_path
     return await call_next(request)
 
 
@@ -64,13 +59,7 @@ def _get_store():
 
 
 @app.get("/")
-def root(request: Request):
-    if request.query_params.get("debug"):
-        return {
-            "scope_path": request.scope.get("path"),
-            "url_path": request.url.path,
-            "headers": dict(request.headers),
-        }
+def root():
     index_file = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
