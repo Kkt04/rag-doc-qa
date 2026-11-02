@@ -76,6 +76,30 @@ def health():
     }
 
 
+@app.get("/api/groq-models")
+def groq_models():
+    if not settings.GROQ_API_KEY:
+        return {"error": "GROQ_API_KEY not set"}
+    try:
+        import httpx
+        r = httpx.get(
+            "https://api.groq.com/openai/v1/models",
+            headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            models = [
+                m["id"]
+                for m in r.json().get("data", [])
+                if m.get("active", True)
+            ]
+            return {"active_models": models}
+        return {"status": r.status_code, "error": r.text}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+
 @app.post("/ingest", response_model=IngestResponse)
 async def ingest(files: List[UploadFile] = File(...)):
     os.makedirs(settings.DATA_DIR, exist_ok=True)
