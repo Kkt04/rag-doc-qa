@@ -32,6 +32,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def fix_vercel_rewritten_path(request, call_next):
+    matched_path = request.headers.get("x-matched-path")
+    path = request.scope.get("path", "")
+    if matched_path and path.startswith("/api/index"):
+        request.scope["path"] = matched_path
+    elif path.startswith("/api/index.py"):
+        sub = path[len("/api/index.py") :]
+        request.scope["path"] = sub if sub else "/"
+    elif path.startswith("/api/index"):
+        sub = path[len("/api/index") :]
+        request.scope["path"] = sub if sub else "/"
+    return await call_next(request)
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 

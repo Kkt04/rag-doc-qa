@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAG Document Q&amp;A Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css?v=4" />
+  <!-- Marked.js for fast, safe markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title-wrap">
+            <h1>RAG Studio</h1>
+            <span class="version-badge">v1.0 · Groq Llama 3.3</span>
+          </div>
+          <p class="subtitle">Intelligent Document Assistant with Semantic Vector Retrieval</p>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="status-pill" id="status" title="Server Connection Status">
+          <span class="status-dot"></span>
+          <span id="status-text">Connecting…</span>
+        </div>
+
+        <button class="icon-btn" id="theme-toggle" aria-label="Toggle Theme" title="Toggle Light/Dark Theme">
+          <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+
+        <button class="icon-btn" id="clear-chat-btn" aria-label="Clear Conversation" title="Clear Conversation">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Grid -->
+    <main class="layout">
+      <!-- Knowledge Base & Upload Sidebar -->
+      <aside class="panel upload-panel">
+        <div class="panel-header">
+          <div class="panel-title-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="panel-icon">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <h2>Knowledge Base</h2>
+          </div>
+          <span class="badge-count" id="file-count-badge">0 queued</span>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Upload documents">
+          <div class="dropzone-glow"></div>
+          <div class="drop-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </div>
+          <p class="drop-title">Drop documents here</p>
+          <p class="drop-hint">or <span class="browse-link">browse files</span></p>
+          <div class="format-tags">
+            <span class="tag">PDF</span>
+            <span class="tag">TXT</span>
+            <span class="tag">MD</span>
+          </div>
+          <input type="file" id="file-input" multiple accept=".pdf,.txt,.md" hidden />
+        </div>
+
+        <!-- Selected Files List -->
+        <div class="file-list-container">
+          <ul class="file-list" id="file-list"></ul>
+          <p class="empty-hint" id="empty-hint">
+            No files staged. Upload PDF, TXT, or Markdown documents to index into the vector store.
+          </p>
+        </div>
+
+        <!-- Ingest Button -->
+        <button class="btn primary-btn" id="ingest-btn" disabled>
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+          </svg>
+          <span id="ingest-label">Ingest &amp; Vectorize</span>
+        </button>
+
+        <!-- Knowledge Summary Card -->
+        <div class="stats-card" id="stats-card">
+          <div class="stats-card-header">
+            <span>Active Knowledge Index</span>
+            <span class="status-dot green"></span>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-value" id="stat-files">0</span>
+              <span class="stat-label">Files</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" id="stat-chunks">0</span>
+              <span class="stat-label">Vector Chunks</span>
+            </div>
+          </div>
+          <div class="meta" id="ingest-meta"></div>
+        </div>
+
+        <!-- RAG Architecture Details -->
+        <details class="specs-accordion">
+          <summary>Pipeline Architecture Details</summary>
+          <div class="specs-content">
+            <div class="spec-row">
+              <span>Embedding</span>
+              <code>all-MiniLM-L6-v2</code>
+            </div>
+            <div class="spec-row">
+              <span>Vector Store</span>
+              <code>FAISS (Cosine L2)</code>
+            </div>
+            <div class="spec-row">
+              <span>Chunk Size / Overlap</span>
+              <code>800 / 120 tokens</code>
+            </div>
+            <div class="spec-row">
+              <span>Retrieval Strategy</span>
+              <code>Adaptive Tool Calling</code>
+            </div>
+          </div>
+        </details>
+      </aside>
+
+      <!-- Main Chat Area -->
+      <section class="panel chat-panel">
+        <div class="messages" id="messages">
+          <div class="welcome" id="welcome">
+            <div class="welcome-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
+              <span>Semantic Grounding Assistant</span>
+            </div>
+            <h3>Grounded Document Intelligence</h3>
+            <p>
+              Upload documents on the left, then ask any question. Our tool-calling agent dynamically decides whether to search your vector store or answer directly, eliminating redundant latency.
+            </p>
+            
+            <div class="suggestion-header">Suggested Prompts</div>
+            <div class="suggestions" id="suggestions"></div>
+          </div>
+        </div>
+
+        <!-- Input Composer -->
+        <div class="composer-container">
+          <div class="composer">
+            <textarea
+              id="ask-input"
+              rows="1"
+              placeholder="Ask a question about your documents… (Press Enter to send)"
+            ></textarea>
+            <button class="send-btn" id="ask-btn" aria-label="Send query">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+          <div class="composer-hint">
+            <span>Press <kbd>Enter ↵</kbd> to send · <kbd>Shift + Enter</kbd> for new line</span>
+            <span class="model-hint">Powered by Groq Llama 3.3 70B</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/static/app.js?v=4"></script>
+</body>
+</html>
